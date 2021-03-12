@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	"google.golang.org/grpc/codes"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,13 +37,12 @@ import (
 )
 
 const (
-	pvcDataSource            = "PersistentVolumeClaim"
-	enableVolumeReplication  = "Enable volume replication"
-	disableVolumeReplication = "Disable volume replication"
-	promoteVolume            = "Promote volume"
-	demoteVolume             = "Demote volume"
-	resyncVolume             = "Resync volume"
-
+	pvcDataSource              = "PersistentVolumeClaim"
+	enableVolumeReplication    = "Enable volume replication"
+	disableVolumeReplication   = "Disable volume replication"
+	promoteVolume              = "Promote volume"
+	demoteVolume               = "Demote volume"
+	resyncVolume               = "Resync volume"
 	volumeReplicationFinalizer = "replication.storage.openshift.io"
 )
 
@@ -216,7 +216,6 @@ func (r *VolumeReplicationReconciler) markVolumeAsPrimary(volumeID string, param
 		Secrets:     secrets,
 		Replication: r.Replication,
 	}
-	force := false
 	var markVolumeAsPrimaryTasks = []*tasks.TaskSpec{
 		{
 			Name: enableVolumeReplication,
@@ -224,7 +223,14 @@ func (r *VolumeReplicationReconciler) markVolumeAsPrimary(volumeID string, param
 		},
 		{
 			Name: promoteVolume,
-			Task: replication.NewPromoteVolumeTask(c, force),
+			Task: replication.NewPromoteVolumeTask(c, false),
+			KnownErrorCodes: []codes.Code{
+				codes.FailedPrecondition,
+			},
+		},
+		{
+			Name: promoteVolume,
+			Task: replication.NewPromoteVolumeTask(c, true),
 		},
 	}
 
