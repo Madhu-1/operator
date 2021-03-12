@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/go-logr/logr"
+	"google.golang.org/grpc/codes"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -36,12 +37,7 @@ import (
 )
 
 const (
-	pvcDataSource            = "PersistentVolumeClaim"
-	enableVolumeReplication  = "Enable volume replication"
-	disableVolumeReplication = "Disable volume replication"
-	promoteVolume            = "Promote volume"
-	demoteVolume             = "Demote volume"
-	resyncVolume             = "Resync volume"
+	pvcDataSource = "PersistentVolumeClaim"
 
 	volumeReplicationFinalizer = "replication.storage.openshift.io"
 )
@@ -216,15 +212,24 @@ func (r *VolumeReplicationReconciler) markVolumeAsPrimary(volumeID string, param
 		Secrets:     secrets,
 		Replication: r.Replication,
 	}
-	force := false
 	var markVolumeAsPrimaryTasks = []*tasks.TaskSpec{
 		{
-			Name: enableVolumeReplication,
+			Name: string(replication.EnableVolumeReplicationTaskName),
 			Task: replication.NewEnableTask(c),
 		},
 		{
-			Name: promoteVolume,
-			Task: replication.NewPromoteVolumeTask(c, force),
+			Name: string(replication.PromoteVolumeTaskName),
+			Task: replication.NewPromoteVolumeTask(c, false),
+		},
+		{
+			Name: string(replication.PromoteVolumeTaskName),
+			KnownErrors: []tasks.TaskError{
+				{
+					ErrorCode: codes.FailedPrecondition,
+					Name:      string(replication.PromoteVolumeTaskName),
+				},
+			},
+			Task: replication.NewPromoteVolumeTask(c, true),
 		},
 	}
 
@@ -241,11 +246,11 @@ func (r *VolumeReplicationReconciler) markVolumeAsSecondary(volumeID string, par
 	}
 	var markVolumeAsSecondaryTasks = []*tasks.TaskSpec{
 		{
-			Name: demoteVolume,
+			Name: string(replication.DemoteVolumeTaskName),
 			Task: replication.NewDemoteVolumeTask(c),
 		},
 		{
-			Name: resyncVolume,
+			Name: string(replication.ResyncVolumeTaskName),
 			Task: replication.NewResyncVolumeTask(c),
 		},
 	}
@@ -264,7 +269,7 @@ func (r *VolumeReplicationReconciler) resyncVolume(volumeID string, parameters, 
 
 	var resyncVolumeTasks = []*tasks.TaskSpec{
 		{
-			Name: resyncVolume,
+			Name: string(replication.ResyncVolumeTaskName),
 			Task: replication.NewResyncVolumeTask(c),
 		},
 	}
@@ -283,7 +288,7 @@ func (r *VolumeReplicationReconciler) disableVolumeReplication(volumeID string, 
 
 	var disableVolumeReplicationTasks = []*tasks.TaskSpec{
 		{
-			Name: disableVolumeReplication,
+			Name: string(replication.DisableVolumeReplicationTaskName),
 			Task: replication.NewDisableTask(c),
 		},
 	}

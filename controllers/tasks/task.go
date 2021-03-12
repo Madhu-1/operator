@@ -16,11 +16,22 @@ limitations under the License.
 
 package tasks
 
+import (
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
+// TaskError holds the known error and the Task Name
+type TaskError struct {
+	ErrorCode codes.Code
+	Name      string
+}
+
 // TaskSpec is the specification for each Task
 type TaskSpec struct {
 	Name        string
 	Task        Task
-	KnownErrors []error
+	KnownErrors []TaskError
 }
 
 // Task is a specific task to be done by controller
@@ -30,11 +41,28 @@ type Task interface {
 
 // RunAll executes all the Task in the given list of TaskSpec
 func RunAll(tasks []*TaskSpec) (string, error) {
-	for _, task := range tasks {
+	for i, task := range tasks {
 		if err := task.Task.Run(); err != nil {
-			// if err is in KnownErrors then continue
-			// else return
-			return task.Name, err
+			foundError := false
+			sc, ok := status.FromError(err)
+			if !ok {
+				// This is not gRPC error. The operation must have failed before gRPC
+				// method was called, otherwise we would get gRPC error.
+				return task.Name, err
+			}
+			// check for next task error message if next task can be continued
+			// for the current error continue it
+			if i < len(tasks) {
+				for _, e := range tasks[i+1].KnownErrors {
+					if task.Name == e.Name && sc.Code() == e.ErrorCode {
+						foundError = true
+						break
+					}
+				}
+			}
+			if !foundError {
+				return task.Name, err
+			}
 		}
 	}
 	return "", nil
